@@ -1,0 +1,720 @@
+---
+title: "STA206 Project: Determinants of Plasma Concentration of Retinol and Beta-carotene Project"
+author: "Meng-Tien Tsai, WunSyuan Wu"
+date: "2021/11/28"
+output:
+  html_document: default
+  pdf_document: default
+  word_document: default
+---
+# Read data
+```{r}
+plasma = read.table("Plasma.txt", header = T)
+```
+
+# Exploratory Data Analysis
+```{r}
+sapply(plasma, class)
+sapply(plasma, function(x) sum(is.na(x)))
+
+```
+## Quantitative
+### get data with only quantitative variables
+```{r}
+library(dplyr)
+quant_plasma <- plasma %>%
+  select_if(function(col) is.integer(col) |
+                          is.numeric(col))
+```
+
+### summary statistics
+```{r}
+summary(quant_plasma)
+```
+
+### histogram
+```{r}
+par(mfrow = c(2, 2))
+for(i in 1:11){
+  hist(quant_plasma[, i], main=paste("Histogram of", names(quant_plasma)[i]))
+}
+
+```
+
+### boxplot
+```{r}
+par(mfrow=c(1,3))
+for (i in 1:length(quant_plasma)) {
+        boxplot(quant_plasma[,i], main=names(quant_plasma[i]), type="l")
+}
+```
+
+### scatter plot matrix (with correlation)
+```{r}
+panel.cor <- function(x, y) {
+    par(usr = c(0, 1, 0, 1))
+    r <- round(cor(x, y, use = "complete.obs"), 2)
+    txt <- paste0("R = ", r)
+    cex.cor <- 0.8/strwidth(txt)
+    text(0.5, 0.5, txt, cex = cex.cor * (abs(r) + 1))
+}
+
+pairs(quant_plasma, lower.panel = panel.cor)
+```
+### scatter plot matrix without extreme cases (with correlation)
+```{r}
+rm1 <- which(quant_plasma$ALCOHOL == max(quant_plasma$ALCOHOL))
+quant_plasma_rm <- quant_plasma[-rm1,]
+rm2 <- which(quant_plasma_rm$RETDIET == max(quant_plasma_rm$RETDIET))
+quant_plasma_rm <- quant_plasma_rm[-rm2,]
+panel.cor <- function(x, y) {
+    par(usr = c(0, 1, 0, 1))
+    r <- round(cor(x, y, use = "complete.obs"), 2)
+    txt <- paste0("R = ", r)
+    cex.cor <- 0.8/strwidth(txt)
+    text(0.5, 0.5, txt, cex = cex.cor * (abs(r) + 1))
+}
+
+pairs(quant_plasma_rm, lower.panel = panel.cor)
+```
+
+### pairwise correlations
+```{r}
+cor(quant_plasma)
+r <- cor(quant_plasma)["BETAPLASMA","RETPLASMA"]
+r
+n.q <- nrow(quant_plasma)
+#Hypothesis testing for correlation among betaplasma and retplasma
+#Null hypothesis : H0: r = 0
+#Alternative hypothesis: H1: r not equal to 0
+t_statistic <- (r*sqrt(n.q-2))/(sqrt(1-r^2))
+t_value <- qt(1-0.05/2, n.q-2)
+t_statistic > t_value
+#Discision Rule: when t_statistics > t_value = 1.967572, we reject null hypothesis.
+#Conclusion: there is not enough evidence to conclude that under significance level 0.05 there is a linear relationship between BETAPLASMA and RETPLASMA
+as.data.frame(cor(quant_plasma))
+```
+
+
+## Qualitative
+
+
+```{r}
+plasma$SEX <- as.factor(plasma$SEX)
+plasma$SMOKSTAT <- as.factor(plasma$SMOKSTAT)
+plasma$VITUSE <- as.factor(plasma$VITUSE)
+sapply(plasma, class)
+levels(plasma$SEX)
+levels(plasma$SMOKSTAT)
+levels(plasma$VITUSE)
+```
+
+### barplot
+```{r}
+par(mfrow = c(2,2))
+table.sex <- table(plasma$SEX)
+table.smok <- table(plasma$SMOKSTAT)
+table.vit <- table(plasma$VITUSE)
+
+barplot(table.sex, main = "Sex: bar chart")
+barplot(table.smok, main = "Smokestat: bar chart")
+barplot(table.vit, main = "Vituse: bar chart")
+```
+
+### piechart
+```{r}
+par(mfrow = c(2,2))
+
+level.sex <- c("female", "male")
+pct.sex <- round(table.sex/nrow(plasma)*100)
+label.sex <- paste(paste(level.sex, pct.sex),"%")
+pie(table.sex, labels = label.sex, col = c(1,2), main = "Sex: pie chart with percentage")
+
+level.smok <- c("current", "former", "never")
+pct.smok <- round(table.smok/nrow(plasma)*100)
+label.smok <- paste(paste(level.smok, pct.smok),"%") 
+pie(table.smok, labels = label.smok, col = c(4,5,6), main = "Smokstat: pie chart with percentage")
+
+level.vit <- c("no", "not often", "often")
+pct.vit <- round(table.vit/nrow(plasma)*100)
+label.vit <- paste(paste(level.vit, pct.vit),"%")
+pie(table.vit, labels = label.vit, col = c(7,8,9), main = "Vituse: pie chart with percentage")
+```
+
+### side by side boxplot by sex, smokestatus, and vitamin use level
+```{r}
+par(mfrow = c(2,3))
+ctgr.name <- c("SEX","SMOKSTAT","VITUSE")
+response.name <- c("BETAPLASMA", "RETPLASMA")
+
+for (i in ctgr.name){
+  for (j in response.name){
+    m <- paste(j,":","side-by-side box plot by",i,"level")
+    
+    boxplot(plasma[,j]~plasma[,i], main = m, xlab = i, ylab = j)
+  }
+}
+```
+
+
+
+
+
+# Betaplasma
+## Preliminary Model Investigation
+
+### transformation to Betaplasma
+```{r}
+rm <- which(plasma$BETAPLASMA <= 0)  #only 1 observation
+plasma_rm <- plasma[-rm,] #Boxcox procedure can only deal with positive response variable
+beta_plasma_rm <- plasma_rm[,-14]
+
+library(MASS)
+# ?if we should put subjective model here
+fit.pre <- lm(BETAPLASMA~., data = beta_plasma_rm)
+summary(fit.pre)
+par(mfrow=c(2,2))
+plot(fit.pre, which=c(1,2))
+boxcox(fit.pre)#lambda = 0,indicating log transformation
+
+hist(log(plasma$BETAPLASMA), xlab ="log(BETAPLASMA)", main = "Histogram of log(BETAPLASMA)")
+fit.pre.trans <- lm(log(BETAPLASMA)~., data = beta_plasma_rm) #try log transformation on BETAPLASMA
+plot(fit.pre.trans, which=c(1,2))
+```
+
+
+### fit full model
+```{r}
+set.seed(1024)
+beta_plasma <- plasma[,-14]
+index <- sample(1:315, ceiling(315*0.8), replace = FALSE)
+beta_plasma_t <- beta_plasma[index,] #training data
+beta_plasma_v <- beta_plasma[-index,] #validation data 
+beta_plasma_t_full<- lm(log(BETAPLASMA+1)~., data=beta_plasma_t)
+summary(beta_plasma_t_full)
+par(mfrow=c(2,2))
+plot(beta_plasma_t_full)
+
+```
+
+
+
+## Model Selection
+### Model selection approach 1: best subset
+#### First order model
+```{r}
+library(leaps)
+subset <- regsubsets(log(BETAPLASMA+1)~., data = beta_plasma_t, nvmax = 12, method ="exhaustive")
+sum_sub <- summary(subset)
+
+n.t <- nrow(beta_plasma_t)
+p <- rowSums(sum_sub$which)
+SSEp <- sum_sub$rss
+R2 <- sum_sub$rsq
+Ra2 <- sum_sub$adjr2
+Cp <- sum_sub$cp
+AIC <- n.t*log(SSEp/n.t)+2*p
+BIC <-n.t*log(SSEp/n.t)+log(n.t)*p
+criteria <- cbind(sum_sub$which, SSEp, R2, Ra2, Cp, AIC, BIC)
+
+#add the criteria of null model
+beta_plasma_t_null<- lm(log(BETAPLASMA+1)~1, data = beta_plasma_t)
+sse0 <- anova(beta_plasma_t_null)["Residuals",2]
+r0 <- summary(beta_plasma_t_null)$r.squared
+ra0 <- summary(beta_plasma_t_null)$adj.r.squared
+p0 <- 1
+cp0 <- (sse0/summary(beta_plasma_t_full)$sigma^2)-(n.t-2*p0)
+aic0 <- n.t*log(sse0/n.t)+2*p0
+bic0 <- n.t*log(sse0/n.t)+log(n.t)*p0
+null <- c(1,rep(0,14),sse0,r0,ra0,cp0,aic0,bic0)
+criteria <- rbind(null, criteria)
+criteria <- as.data.frame(criteria)
+criteria
+
+which.best.sub <- data.frame(
+  Ra2 = which.max(criteria$Ra2),
+  Cp = which.min(criteria$Cp),
+  AIC = which.min(criteria$AIC),
+  BIC = which.min(criteria$BIC)
+)
+which.best.sub
+rbind(criteria[10,],criteria[7,])
+```
+By adjusted r squared, Mallow's Cp and AIC criterion, the model containing AGE, SEX, SMOKSTAT, QUETELET, VITUSE, FAT, FIBER, BETADIET is the best.
+By BIC criteria which prefers a smaller model than AIC criteria, the model containing SMOKSTAT, QUETELET, VITUSE, FAT, BETADIET is the best.
+
+#### fit the result above
+```{r}
+#best subset from Cp and AIC and adjusted r square
+best.sub1 <- lm(log(BETAPLASMA+1)~AGE+SEX+SMOKSTAT+QUETELET+VITUSE+FAT+FIBER+BETADIET, data = beta_plasma_t)
+summary(best.sub1)
+par(mfrow=c(2,2))
+plot(best.sub1)
+```
+```{r}
+#best subset from BIC
+best.sub2 <- lm(log(BETAPLASMA+1)~SMOKSTAT+QUETELET+VITUSE+FAT+BETADIET, data = beta_plasma_t)
+summary(best.sub2)
+par(mfrow=c(2,2))
+plot(best.sub2)
+```
+
+### Model selection approach 2: Stepwise model selection
+#### First order model
+```{r}
+library(MASS)
+step.sub1 <- stepAIC(beta_plasma_t_null, scope = list(upper=beta_plasma_t_full, lower=~1), direction = "both", k = 2, trace = FALSE)
+
+step.model1 <- lm(log(BETAPLASMA+1) ~ QUETELET + VITUSE + BETADIET + 
+    FAT + SMOKSTAT + SEX + AGE, data = beta_plasma_t)
+summary(step.model1) 
+```
+
+#### Second order model
+```{r}
+beta_plasma_t_full2 <- lm(log(BETAPLASMA+1)~.^2, data = beta_plasma_t)
+step.sub2 <- stepAIC(beta_plasma_t_null, scope = list(upper=beta_plasma_t_full2, lower=~1), direction = "both", k = 2, trace = FALSE)
+
+step.model2 <- lm(log(BETAPLASMA +1) ~ CHOLESTEROL + FIBER + QUETELET + VITUSE + BETADIET + AGE + RETDIET + SMOKSTAT + VITUSE:BETADIET + CHOLESTEROL:RETDIET + AGE:RETDIET + VITUSE:SMOKSTAT + RETDIET:SMOKSTAT + CHOLESTEROL:QUETELET + BETADIET:AGE + FIBER:SMOKSTAT + CHOLESTEROL:FIBER, data = beta_plasma_t)
+
+summary(step.model2) 
+```
+
+## Model Validation
+### Internal validation of step.model1 and step.model2
+```{r}
+#find SSE for step.model1 and step.model2
+sse.bs1 <- anova(best.sub1)["Residuals",2]
+sse.bs2 <- anova(best.sub2)["Residuals",2]
+sse.sm1 <- anova(step.model1)["Residuals",2]
+sse.sm2 <- anova(step.model2)["Residuals",2]
+sse.compare <- c(sse.bs1,sse.bs2,sse.sm1,sse.sm2)
+
+#find MSE for step.model1 and step.model2
+mse.bs1 <- anova(best.sub1)["Residuals",3]
+mse.bs2 <- anova(best.sub2)["Residuals",3]
+mse.sm1 <- anova(step.model1)["Residuals",3]
+mse.sm2 <- anova(step.model2)["Residuals",3]
+mse.compare <- c(mse.bs1,mse.bs2,mse.sm1,mse.sm2)
+
+#find p for step.model1 and step.model2
+p.bs1 <-9
+p.bs2 <-6
+p.sm1 <-7
+p.sm2 <-17
+p.compare <- c(p.bs1,p.bs2,p.sm1,p.sm2)
+
+#find Cp for step.model1 and step.model2
+#sigma^2: MSE_fullmodel(create a fit3 related to step.model1)
+#n.t: nrow(training data)
+
+beta_plasma_tt2 <- beta_plasma_t[,c("BETAPLASMA","AGE","SEX","SMOKSTAT","QUETELET","VITUSE","FAT","FIBER","BETADIET")]
+Full4 <-  lm(log(BETAPLASMA+1)~.^2, data=beta_plasma_tt2)
+mse4 <- anova(Full4)['Residuals',3]
+
+beta_plasma_tt <- beta_plasma_t[,c("BETAPLASMA","QUETELET","VITUSE","CHOLESTEROL","BETADIET","SMOKSTAT","SEX")]
+Full3 <- lm(log(BETAPLASMA+1)~.^2, data=beta_plasma_tt)
+length(Full3$coef)
+mse3 <- anova(Full3)['Residuals',3]
+
+cp.bs1 <- (sse.bs1/mse4)-(n.t-2*p.bs1)
+cp.bs2 <- (sse.bs2/mse4)-(n.t-2*p.bs2)
+cp.sm1 <- (sse.sm1/mse3)-(n.t-2*p.sm1)
+cp.sm2 <- (sse.sm2/mse3)-(n.t-2*p.sm2)
+cp.compare <- c(cp.bs1,cp.bs2,cp.sm1,cp.sm2)
+
+#find Pressp for step.model1 and step.model2
+press.bs1 <- sum(best.sub1$residuals^2/(1-influence(best.sub1)$hat)^2)
+press.bs2 <- sum(best.sub2$residuals^2/(1-influence(best.sub2)$hat)^2)
+press.sm1 <- sum(step.model1$residuals^2/(1-influence(step.model1)$hat)^2)
+press.sm2 <- sum(step.model2$residuals^2/(1-influence(step.model2)$hat)^2)
+press.compare <- c(press.bs1,press.bs2,press.sm1,press.sm2)
+
+compare <- data.frame(sse=sse.compare, mse=mse.compare, p=p.compare, cp=cp.compare, press=press.compare)
+rownames(compare) <- c("best subset 1","best subset 2","stepwise mode1", "stepwise model2")
+compare
+```
+### External validation
+```{r}
+##best subsets, stepwise models on validation data
+best.sub1.v <- lm(best.sub1, data = beta_plasma_v)
+best.sub2.v <- lm(best.sub2, data = beta_plasma_v)
+step.model1.v <- lm(step.model1, data = beta_plasma_v)
+step.model2.v <- lm(step.model2, data = beta_plasma_v)
+
+#summary on training data and validation data respectively
+list(summary(best.sub1), summary(best.sub2),summary(step.model1),summary(step.model2))
+list(summary(best.sub1.v), summary(best.sub2.v),summary(step.model1.v),summary(step.model2.v))
+
+#percent change in parameter estimation
+pct_chg.coef <- function(model, modelv, digit){
+  coef.m <- coef(model)
+  coef.v <- coef(modelv)
+  pct.chg.coef <- round(abs(coef.v-coef.m)/abs(coef.m)*100, digit)
+  pct.chg.coef
+}
+pct_chg.coef.bs1 <- pct_chg.coef(best.sub1, best.sub1.v, 2)
+pct_chg.coef.bs2 <- pct_chg.coef(best.sub2, best.sub2.v, 2)
+pct_chg.coef.sm1 <- pct_chg.coef(step.model1, step.model1.v, 2)
+pct_chg.coef.sm2 <- pct_chg.coef(step.model2, step.model2.v, 2)
+
+#percent change in standard error
+pct_chg.sd <- function(model, modelv, digit){
+  sd.m <- summary(model)$coefficients[, "Std. Error"]
+  sd.v <- summary(modelv)$coefficients[, "Std. Error"]
+  pct.chg.sd <- round(abs(sd.v-sd.m)/abs(sd.m)*100, digit)
+  pct.chg.sd
+}
+pct_chg.sd.bs1 <- pct_chg.sd(best.sub1, best.sub1.v, 2)
+pct_chg.sd.bs2 <- pct_chg.sd(best.sub2, best.sub2.v, 2)
+pct_chg.sd.sm1 <- pct_chg.sd(step.model1, step.model1.v, 2)
+pct_chg.sd.sm2 <- pct_chg.sd(step.model2, step.model2.v, 2)
+
+
+pct_chg_beta_bs1 <- data.frame(pct_chg.coef.bs1,pct_chg.sd.bs1) 
+pct_chg_beta_bs1 
+pct_chg_beta_bs2 <- data.frame(pct_chg.coef.bs2,pct_chg.sd.bs2)
+pct_chg_beta_bs2
+pct_chg_beta_sm1 <- data.frame(pct_chg.coef.sm1,pct_chg.sd.sm1)
+pct_chg_beta_sm1
+pct_chg_beta_sm2 <- data.frame(pct_chg.coef.sm2,pct_chg.sd.sm2)
+pct_chg_beta_sm2
+
+
+colnames(pct_chg_beta_bs1) <- c("change in coefficient(%)","change in standard deviation(%)" )
+colnames(pct_chg_beta_bs2) <- c("change in coefficient(%)","change in standard deviation(%)" )
+colnames(pct_chg_beta_sm1) <- c("change in coefficient(%)","change in standard deviation(%)" )
+colnames(pct_chg_beta_sm2) <- c("change in coefficient(%)","change in standard deviation(%)" )
+
+#mean squared prediction error
+mspe <- function(model, dv, data){
+  yhat <- predict(model, newdata = data)
+  y <- data[[dv]]
+  mean((y-yhat)^2)
+}
+
+mspe.bs1 <- mspe(best.sub1, "BETAPLASMA", beta_plasma_v)
+mspe.bs2 <- mspe(best.sub2, "BETAPLASMA", beta_plasma_v)
+mspe.sm1 <- mspe(step.model1, "BETAPLASMA", beta_plasma_v)
+mspe.sm2 <- mspe(step.model2, "BETAPLASMA", beta_plasma_v)
+
+#compare with Pressp/n and SSEp/n 
+best.sub1.compare <- c(mspe.bs1,press.bs1/n.t,mse.bs1)
+best.sub2.compare <- c(mspe.bs2,press.bs2/n.t,mse.bs2)
+step.model1.compare <- c(mspe.sm1,press.sm1/n.t,mse.sm1)
+step.model2.compare <- c(mspe.sm2,press.sm2/n.t,mse.sm2)
+compare2 <-data.frame(best.sub1.compare, best.sub2.compare, step.model1.compare,step.model2.compare)
+compare2 <- as.data.frame(t(compare2))
+colnames(compare2) <- c("MSPE", "Press/n", "MSE")
+rownames(compare2) <- c("Best Subset1", "Best Subset2", "Stepwise model1","Stepwise model2")
+compare2
+
+
+```
+# Model diagnostic: Outlying and influential cases
+```{r}
+best.sub1_final <- lm(best.sub1, data = beta_plasma)
+summary(best.sub1_final)
+anova(best.sub1_final)
+```
+```{r}
+par(mfrow=c(1,1))
+plot(best.sub1_final, which=c(1,2))
+#check outliers in Y
+#n <- nrow(totaldata)
+n <- nrow(beta_plasma)
+std.d.res <- studres(best.sub1_final)
+p.res <- 17
+bon_thred <- qt(1-0.1/(2*n), n-p.res)
+outlier.Y <- as.vector(which(abs(std.d.res) >= bon_thred))
+outlier.Y
+
+hii <- influence(best.sub1_final)$hat
+#check outliers in X
+outlier.X <- as.vector(which(hii>(2*p.res/n)))
+outlier.X
+plot(hii, residuals(best.sub1_final), xlab = "leverage", ylab="residuals")
+#influence index plot 
+plot(best.sub1_final, which = 4)
+```
+```{r}
+best.sub1_final2 <- lm(best.sub1_final, data = beta_plasma[-c(35,39,257),])
+fitted.sm2 <- fitted(best.sub1_final)
+fitted.sm2.rm <- fitted(best.sub1_final2)
+SUM <- sum(abs((fitted.sm2[-c(35,39,257)]-fitted.sm2.rm)/fitted.sm2[-c(35,39,257)]))
+SUM <- SUM +abs((fitted.sm2[c(35,39,257)]-predict(step.model2, newdata = beta_plasma[c(35,39,257),]))/fitted.sm2[c(35,39,257)])
+per.average <- SUM/n
+per.average
+
+summary(best.sub1_final2)
+```
+The potential influential cases identified previously is the 35th, 39th, and 257th cases, we fit the model without 35th,39th and 257th cases and calculate the average absolute difference in the fitted values as 1.01%, 0.97% and 0.99% respectively. For 35th, 39th and 257th cases, the percentage change on the fitted value with or without the case is very small. Therefore, no case have an unduly large influence on prediction and thus all cases may be retained.
+
+# RETPLASMA
+## Preliminary Model Investigation
+
+### transformation to Retplasma
+
+```{r}
+retplasma <- plasma[,-13]
+fit.pre <- lm(RETPLASMA~., data = retplasma)
+par(mfrow=c(2,2))
+plot(fit.pre, which=c(1,2))
+boxcox(fit.pre)
+
+hist(log(plasma$RETPLASMA), xlab ="log(RETPLASMA)", main = "Histogram of log(RETPLASMA)")
+fit.pre.trans <- lm(log(RETPLASMA)~., data = retplasma)
+par(mfrow=c(2,2))
+plot(fit.pre.trans, which=c(1,2))
+summary(fit.pre.trans)
+```
+
+### fit full model (training / testing)
+```{r}
+set.seed(1024)
+index <- sample(1:315, ceiling(315*0.8) , replace = FALSE)
+retplasma_t <- retplasma[index,] #training data
+retplasma_v <- retplasma[-index,] #validation data 
+retplasma_t_full <- lm(log(RETPLASMA)~., data=retplasma_t)
+summary(retplasma_t_full)
+par(mfrow=c(2,2))
+plot(retplasma_t_full)
+```
+## Model Selection
+### Model selection approach 1: best subset
+#### First order model
+```{r}
+
+subset <- regsubsets(log(RETPLASMA)~., data = retplasma_t, nvmax = 12, method ="exhaustive")
+sum_sub <- summary(subset)
+n.t <- nrow(retplasma_t)
+p <- rowSums(sum_sub$which)
+SSEp <- sum_sub$rss
+R2 <- sum_sub$rsq
+Ra2 <- sum_sub$adjr2
+Cp <- sum_sub$cp
+AIC <- n.t*log(SSEp/n.t)+2*p
+BIC <-n.t*log(SSEp/n.t)+log(n.t)*p
+criteria <- cbind(sum_sub$which, SSEp, R2, Ra2, Cp, AIC, BIC)
+
+#add the criteria of null model
+retplasma_t_null<- lm(log(RETPLASMA)~1, data = retplasma_t)
+sse0 <- anova(retplasma_t_null)["Residuals",2]
+r0 <- summary(retplasma_t_null)$r.squared
+ra0 <- summary(retplasma_t_null)$adj.r.squared
+p0 <- 1
+cp0 <- (sse0/summary(retplasma_t_full)$sigma^2)-(n.t-2*p0)
+aic0 <- n.t*log(sse0/n.t)+2*p0
+bic0 <- n.t*log(sse0/n.t)+log(n.t)*p0
+null <- c(1,rep(0,14),sse0,r0,ra0,cp0,aic0,bic0)
+criteria <- rbind(null, criteria)
+criteria <- as.data.frame(criteria)
+criteria
+
+```
+```{r}
+which.best.sub <- data.frame(
+  Ra2 = which.max(criteria$Ra2),
+  Cp = which.min(criteria$Cp),
+  AIC = which.min(criteria$AIC),
+  BIC = which.min(criteria$BIC)
+)
+which.best.sub
+rbind(criteria[5,],rbind(criteria[4,],criteria[2,]))
+```
+By adjusted r squared, the model containing AGE, SMOKSTAT, FAT, BETADIET is the best.
+By Mallow's Cp and AIC criterion, the model containing AGE, SMOKSTAT, FAT is the best.
+By BIC criteria which prefers a smaller model than AIC criteria, the model containing AGE is the best.
+
+#### fit the result above
+```{r}
+#best subset from adjusted r square
+best.sub1 <- lm(log(RETPLASMA)~AGE+SMOKSTAT+FAT+BETADIET, data = retplasma_t)
+summary(best.sub1)
+par(mfrow=c(2,2))
+plot(best.sub1)
+```
+```{r}
+#best subset from Cp and AIC
+best.sub2 <- lm(log(RETPLASMA)~AGE+SMOKSTAT+FAT, data = retplasma_t)
+summary(best.sub2)
+par(mfrow=c(2,2))
+plot(best.sub2)
+```
+```{r}
+#best subset from BIC
+best.sub3 <- lm(log(RETPLASMA)~AGE+FAT, data = retplasma_t)
+summary(best.sub3)
+par(mfrow=c(2,2))
+plot(best.sub3)
+```
+
+### Model selection approach 2: Stepwise model selection
+#### First order model
+```{r}
+step.sub1 <- stepAIC(retplasma_t_null, scope = list(upper=retplasma_t_full, lower=~1), direction = "both", k = 2, trace = FALSE)
+summary(step.sub1) #It's the same result as the one we got from best subset selection from Cp and AIC 
+```
+
+#### Second order model
+```{r}
+retplasma_t_full2 <- lm(log(RETPLASMA)~.^2, data = retplasma_t)
+step.sub2 <- stepAIC(retplasma_t_null, scope = list(upper=retplasma_t_full2, lower=~1), direction = "both", k = 2, trace = FALSE)
+summary(step.sub2) 
+# same as the step.sub1
+```
+
+## Model Validation
+### Internal validation of candidate_m1, candidate_m2, and candidate_m3
+```{r}
+#test on 3 best models so far
+candidate_m1 <- lm(log(RETPLASMA)~AGE+SMOKSTAT+FAT+BETADIET, data = retplasma_t)
+candidate_m2 <- lm(log(RETPLASMA) ~ AGE + SMOKSTAT + FAT, data = retplasma_t)
+candidate_m3 <- lm(log(RETPLASMA) ~ AGE + FAT, data = retplasma_t)
+
+#find SSE for candidate_m1 and candidate_m2
+sse.cm1 <- anova(candidate_m1)["Residuals",2]
+sse.cm2 <- anova(candidate_m2)["Residuals",2]
+sse.cm3 <- anova(candidate_m3)["Residuals",2]
+sse.compare <- c(sse.cm1,sse.cm2,sse.cm3)
+
+#find MSE for candidate_m1 and candidate_m2
+mse.cm1 <- anova(candidate_m1)["Residuals",3]
+mse.cm2 <- anova(candidate_m2)["Residuals",3]
+mse.cm3 <- anova(candidate_m3)["Residuals",3]
+mse.compare <- c(mse.cm1,mse.cm2, mse.cm3)
+
+#find p for candidate_m1 and candidate_m2
+p.cm1 <- 5
+p.cm2 <- 4
+p.cm3 <- 3
+p.compare <- c(p.cm1,p.cm2, p.cm3)
+
+#find Cp for candidate_m1 and candidate_m2
+#sigma^2: MSE_fullmodel
+#n.t: nrow(training data)
+mse_full <- summary(retplasma_t_full)$sigma^2
+cp.cm1 <- (sse.cm1/mse_full)-(n.t-2*p.cm1)
+cp.cm2 <- (sse.cm2/mse_full)-(n.t-2*p.cm2)
+cp.cm3 <- (sse.cm3/mse_full)-(n.t-2*p.cm3)
+cp.compare <- c(cp.cm1,cp.cm2,cp.cm3)
+
+#find Pressp for candidate_m1 and candidate_m2
+press.cm1 <- sum(candidate_m1$residuals^2/(1-influence(candidate_m1)$hat)^2)
+press.cm2 <- sum(candidate_m2$residuals^2/(1-influence(candidate_m2)$hat)^2)
+press.cm3 <- sum(candidate_m3$residuals^2/(1-influence(candidate_m3)$hat)^2)
+press.compare <- c(press.cm1,press.cm2,press.cm3)
+
+compare <- data.frame(sse=sse.compare, mse=mse.compare, p=p.compare, cp=cp.compare, press=press.compare)
+rownames(compare) <- c("candidate_m1","candidate_m2","candidate_m3")
+compare
+```
+
+### External validation
+```{r}
+##candidate_m1 on validation data
+candidate_m1.v <- lm(candidate_m1, data = retplasma_v)
+candidate_m2.v <- lm(candidate_m2, data = retplasma_v)
+candidate_m3.v <- lm(candidate_m3, data = retplasma_v)
+#summary on training data and validation data respectively
+list(summary(candidate_m1), summary(candidate_m2), summary(candidate_m3))
+list(summary(candidate_m1.v), summary(candidate_m2.v), summary(candidate_m3.v))
+
+#percent change in parameter estimation
+pct_chg.coef <- function(model, modelv, digit){
+  coef.m <- coef(model)
+  coef.v <- coef(modelv)
+  pct.chg.coef <- round(abs(coef.v-coef.m)/abs(coef.m)*100, digit)
+  pct.chg.coef
+}
+
+pct_chg.coef.cm1 <- pct_chg.coef(candidate_m1, candidate_m1.v, 2)
+pct_chg.coef.cm2 <- pct_chg.coef(candidate_m2, candidate_m2.v, 2)
+pct_chg.coef.cm3 <- pct_chg.coef(candidate_m3, candidate_m3.v, 2)
+
+#percent change in standard error
+pct_chg.sd <- function(model, modelv, digit){
+  sd.m <- summary(model)$coefficients[, "Std. Error"]
+  sd.v <- summary(modelv)$coefficients[, "Std. Error"]
+  pct.chg.sd <- round(abs(sd.v-sd.m)/abs(sd.m)*100, digit)
+  pct.chg.sd
+}
+pct_chg.sd.cm1 <- pct_chg.sd(candidate_m1, candidate_m1.v, 2)
+pct_chg.sd.cm2 <- pct_chg.sd(candidate_m2, candidate_m2.v, 2)
+pct_chg.sd.cm3 <- pct_chg.sd(candidate_m3, candidate_m3.v, 2)
+
+pct_chg_beta_cm1 <- data.frame(pct_chg.coef.cm1,pct_chg.sd.cm1) 
+pct_chg_beta_cm1 
+pct_chg_beta_cm2 <- data.frame(pct_chg.coef.cm2,pct_chg.sd.cm2)
+pct_chg_beta_cm2
+pct_chg_beta_cm3 <- data.frame(pct_chg.coef.cm3,pct_chg.sd.cm3)
+pct_chg_beta_cm3
+
+
+colnames(pct_chg_beta_cm1) <- c("change in coefficient(%)","change in standard deviation(%)" )
+colnames(pct_chg_beta_cm2) <- c("change in coefficient(%)","change in standard deviation(%)" )
+colnames(pct_chg_beta_cm3) <- c("change in coefficient(%)","change in standard deviation(%)" )
+
+#mean squared prediction error
+mspe <- function(model, dv, data){
+  yhat <- predict(model, newdata = data)
+  y <- data[[dv]]
+  mean((y-yhat)^2)
+}
+
+mspe.cm1 <- mspe(candidate_m1, "RETPLASMA", retplasma_v)
+mspe.cm2 <- mspe(candidate_m2, "RETPLASMA", retplasma_v)
+mspe.cm3 <- mspe(candidate_m3, "RETPLASMA", retplasma_v)
+
+#compare with Pressp/n and SSEp/n 
+candidate_m1.compare <- c(mspe.cm1,press.cm1/n.t,mse.cm1)
+candidate_m2.compare <- c(mspe.cm2,press.cm2/n.t,mse.cm2)
+candidate_m3.compare <- c(mspe.cm3,press.cm3/n.t,mse.cm3)
+
+compare2 <-data.frame(candidate_m1.compare, candidate_m2.compare, candidate_m3.compare)
+compare2 <- as.data.frame(t(compare2))
+colnames(compare2) <- c("MSPE", "Press/n", "MSE")
+rownames(compare2) <- c("candidate_m1","candidate_m2","candidate_m3")
+compare2
+
+```
+Choose candidate_m2: Age, Smokstat, Fat
+
+## Model diagnostic: Outlying and influential cases
+```{r}
+candidate_m2_final <- lm(candidate_m2, data = retplasma)
+summary(candidate_m2_final)
+anova(candidate_m2_final)
+```
+```{r}
+par(mfrow=c(1,1))
+plot(candidate_m2_final, which=c(1,2))
+#check outliers in Y
+#n <- nrow(totaldata)
+n <- nrow(retplasma)
+std.d.res <- studres(candidate_m2_final)
+p.res <- 4
+bon_thred <- qt(1-0.1/(2*n), n-p.res)
+outlier.Y <- as.vector(which(abs(std.d.res) >= bon_thred))
+outlier.Y
+
+hii <- influence(candidate_m2_final)$hat
+#check outliers in X
+outlier.X <- as.vector(which(hii>(2*p.res/n)))
+outlier.X
+plot(hii, residuals(candidate_m2_final), xlab = "leverage", ylab="residuals")
+#influence index plot 
+plot(candidate_m2_final, which = 4)
+```
+```{r}
+candidate_m2_final2 <- lm(candidate_m2_final, data = retplasma[-c(36,296),])
+f1 <- fitted(candidate_m2_final)
+f2 <- fitted(candidate_m2_final2)
+SUM<-sum(abs((f1[-c(36,296)]-f2)/f1[-c(36,296)]))
+SUM<-SUM+abs((f1[c(36,296)]-predict(candidate_m2_final,newdata = retplasma[c(36,296),]))/f1[c(36,296)])
+per.average <- SUM/n
+per.average
+summary(candidate_m2)
+```
+The potential influential cases identified previously is the 36th and 296th cases, we fit the model without 36th and 296th cases and calculate the average absolute difference in the fitted values as 0.040% respectively. For 36th and 296th cases, the percentage change on the fitted value with or without the case is very small. Therefore, no case have an unduly large influence on prediction and thus all cases may be retained.
+
